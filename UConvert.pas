@@ -77,16 +77,22 @@ var
 begin
   PrepareStreams;
   try
-    // outputStream.CopyFrom(inputStream, 0);
-
     EncodeOutput := TConvertOptions.OutputFormat.Create(nil);
     try
       EncodeOutput.SetLocale(TConvertOptions.Locale);
+
+      // TODO: compiler la regex
+      // TODO: recupérer la liste des noms des champs capturants de la regex
       EncodeOutput.SetHeaders(nil);
 
       EncodeOutput.WriteHeaderFile;
       EncodeOutput.WriteHeaderDataset(nil,nil);
 
+      // TODO: appliquer la regex sur inputStream
+      // TODO: pour chaque correspondance de la regex, ecrire un enregistrement :
+      EncodeOutput.WriteMasterData(nil, nil);
+
+      EncodeOutput.WriteFooterDataset(nil,nil);
       EncodeOutput.WriteFooterFile;
 
       EncodeOutput.SaveToStream(outputStream, TEncoding.Default);
