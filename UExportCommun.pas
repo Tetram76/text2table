@@ -3,12 +3,14 @@ unit UExportCommun;
 interface
 
 uses
-  SysUtils, Classes, System.IOUtils, Generics.Collections, IBQuery;
+  SysUtils, Classes, System.IOUtils, Generics.Collections;
 
 type
+  TData = TList<string>;
+
   TLogEvent = procedure(const Message: string; Erreur: Boolean) of object;
   TProcessCallback = TNotifyEvent;
-  TProcessDataCallback = procedure(Sender: TObject; IBMaster, IBDetail: TIBQuery) of object;
+  TProcessDataCallback = procedure(Sender: TObject; Data: TData) of object;
 
   TInfoEncodeFichierClass = class of TInfoEncodeFichier;
 
@@ -17,7 +19,7 @@ type
     class var FOutputFormats: TDictionary<string, TInfoEncodeFichierClass>;
   public
     class function OutputFormats: TDictionary<string, TInfoEncodeFichierClass>;
-    class procedure RegisterOutputFormat(Format: string; EncodeClass: TInfoEncodeFichierClass);
+    class procedure RegisterOutputFormat(const Format: string; EncodeClass: TInfoEncodeFichierClass);
     class constructor Create;
     class destructor Destroy;
 
@@ -25,11 +27,12 @@ type
     FExtension: string;
     FOnWriteHeaderFile: TProcessCallback;
     FOnWriteFooterFile: TProcessCallback;
-    FOnWriteFooterDataset: TProcessDataCallback;
-    FOnWriteHeaderDataset: TProcessDataCallback;
-    FOnWriteDetailData: TProcessDataCallback;
-    FOnWriteMasterData: TProcessDataCallback;
-    FFormatSettings: TFormatSettings;
+    FOnWriteFooterDataset: TProcessCallback;
+    FOnWriteHeaderDataset: TProcessCallback;
+    FOnWriteData: TProcessDataCallback;
+    FInputFormatSettings: TFormatSettings;
+    FOutputFormatSettings: TFormatSettings;
+    FHeaders: TData;
   protected
     FFlatBuild: Boolean;
   public
@@ -40,27 +43,29 @@ type
     destructor Destroy; override;
 
     procedure WriteHeaderFile; virtual;
-    procedure WriteHeaderDataset(IBMaster, IBDetail: TIBQuery); virtual;
-    procedure WriteMasterData(IBMaster, IBDetail: TIBQuery); virtual;
-    procedure WriteDetailData(IBMaster, IBDetail: TIBQuery); virtual;
-    procedure WriteFooterDataset(IBMaster, IBDetail: TIBQuery); virtual;
+    procedure WriteHeaderDataset; virtual;
+    procedure WriteData(Data: TData); virtual;
+    procedure WriteFooterDataset; virtual;
     procedure WriteFooterFile; virtual;
 
-    procedure SetHeaders(List: TStrings); virtual; abstract;
-    procedure SetLocale(locale: string); virtual;
+    procedure SetHeaders(List: TData); virtual;
+    procedure SetOutputLocale(locale: string); virtual;
+    procedure SetInputLocale(locale: string); virtual;
 
     function SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean; virtual; abstract;
 
-    procedure BuildFile(IBMaster, IBDetail: TIBQuery; Parameters: array of string);
+    procedure BuildFile(const Data, RegEx: string);
+
+    property Headers: TData read FHeaders write SetHeaders;
 
     property Extension: string read FExtension write FExtension;
-    property FormatSettings: TFormatSettings read FFormatSettings;
+    property OutputFormatSettings: TFormatSettings read FOutputFormatSettings;
+    property InputFormatSettings: TFormatSettings read FInputFormatSettings;
 
     property OnWriteHeaderFile: TProcessCallback read FOnWriteHeaderFile write FOnWriteHeaderFile;
-    property OnWriteHeaderDataset: TProcessDataCallback read FOnWriteHeaderDataset write FOnWriteHeaderDataset;
-    property OnWriteMasterData: TProcessDataCallback read FOnWriteMasterData write FOnWriteMasterData;
-    property OnWriteDetailData: TProcessDataCallback read FOnWriteDetailData write FOnWriteDetailData;
-    property OnWriteFooterDataset: TProcessDataCallback read FOnWriteFooterDataset write FOnWriteFooterDataset;
+    property OnWriteHeaderDataset: TProcessCallback read FOnWriteHeaderDataset write FOnWriteHeaderDataset;
+    property OnWriteData: TProcessDataCallback read FOnWriteData write FOnWriteData;
+    property OnWriteFooterDataset: TProcessCallback read FOnWriteFooterDataset write FOnWriteFooterDataset;
     property OnWriteFooterFile: TProcessCallback read FOnWriteFooterFile write FOnWriteFooterFile;
   end;
 
@@ -75,6 +80,9 @@ type
   end;
 
 implementation
+
+uses
+  URegExp, UConvert;
 
 { TWindowsStringList }
 
@@ -94,92 +102,78 @@ end;
 
 { TInfoEncodeFichier }
 
-procedure TInfoEncodeFichier.BuildFile(IBMaster, IBDetail: TIBQuery; Parameters: array of string);
+procedure TInfoEncodeFichier.BuildFile(const Data, RegEx: string);
 var
   headerWritten: Boolean;
   i: Integer;
-  p: string;
+  s: string;
+  RegExp: TRegExp;
+  sl: TData;
 begin
-  headerWritten := False;
-
-  if not IBMaster.Active then
-    IBMaster.Open;
-
-  WriteHeaderFile;
-  if Assigned(OnWriteHeaderFile) then
-    OnWriteHeaderFile(Self);
-
-  while not IBMaster.Eof do
-  begin
-    if Assigned(IBDetail) and (Length(Parameters) > 0) then
+  RegExp := TRegExp.Create;
+  sl := TData.Create;
+  try
+    RegExp.Prepare(TConvertOptions.RegEx);
+    // PCRE retourne le noms en en commençant par le "fin" de la regex
+    for i := Pred(RegExp.CaptureCount) downto 0 do
     begin
-      IBDetail.Close;
-      for i := Low(Parameters) to High(Parameters) do
+      s := RegExp.CaptureNames[i];
+      if sl.IndexOf(s) = -1 then
+        sl.Add(s);
+    end;
+    SetHeaders(sl);
+
+    RegExp.BeginSearch(Data);
+
+    headerWritten := False;
+
+    WriteHeaderFile;
+    if Assigned(OnWriteHeaderFile) then
+      OnWriteHeaderFile(Self);
+
+    while RegExp.Next do
+    begin
+      sl.Clear;
+      for s in Headers do
+        sl.Add(RegExp.GetCaptureByName(s));
+
+      if not headerWritten then
       begin
-        p := Parameters[i];
-        IBDetail.ParamByName(p).AssignField(IBMaster.FieldByName(p));
+        WriteHeaderDataset;
+        if Assigned(OnWriteHeaderDataset) then
+          OnWriteHeaderDataset(Self);
+        headerWritten := True;
       end;
-      IBDetail.Open;
+
+      WriteData(sl);
+      if Assigned(OnWriteData) then
+        OnWriteData(Self, sl);
     end;
 
-    if not headerWritten then
+    if headerWritten then
     begin
-      WriteHeaderDataset(IBMaster, IBDetail);
-      if Assigned(OnWriteHeaderDataset) then
-        OnWriteHeaderDataset(Self, IBMaster, IBDetail);
-      headerWritten := True;
+      WriteFooterDataset;
+      if Assigned(OnWriteFooterDataset) then
+        OnWriteFooterDataset(Self);
     end;
 
-    if not Assigned(IBDetail) then
-    begin
-      WriteMasterData(IBMaster, IBDetail);
-      if Assigned(OnWriteMasterData) then
-        OnWriteMasterData(Self, IBMaster, IBDetail);
-    end
-    else
-    begin
-      if not FFlatBuild then
-      begin
-        WriteMasterData(IBMaster, IBDetail);
-        if Assigned(OnWriteMasterData) then
-          OnWriteMasterData(Self, IBMaster, IBDetail);
-      end;
-      while not IBDetail.Eof do
-      begin
-        if FFlatBuild then
-        begin
-          WriteMasterData(IBMaster, IBDetail);
-          if Assigned(OnWriteMasterData) then
-            OnWriteMasterData(Self, IBMaster, IBDetail);
-        end;
-        WriteDetailData(IBMaster, IBDetail);
-        if Assigned(OnWriteDetailData) then
-          OnWriteDetailData(Self, IBMaster, IBDetail);
-
-        IBDetail.Next;
-      end;
-    end;
-
-    IBMaster.Next;
+    WriteFooterFile;
+    if Assigned(OnWriteFooterFile) then
+      OnWriteFooterFile(Self);
+  finally
+    sl.Free;
+    RegExp.Free;
   end;
-  if headerWritten then
-  begin
-    WriteFooterDataset(IBMaster, IBDetail);
-    if Assigned(OnWriteFooterDataset) then
-      OnWriteFooterDataset(Self, IBMaster, IBDetail);
-  end;
-
-  WriteFooterFile;
-  if Assigned(OnWriteFooterFile) then
-    OnWriteFooterFile(Self);
 end;
 
 constructor TInfoEncodeFichier.Create(LogCallBack: TLogEvent);
 begin
   FLogCallback := LogCallBack;
   FFlatBuild := True;
+  FHeaders := TData.Create;
 
-  SetLocale('');
+  SetOutputLocale('');
+  SetInputLocale('');
 end;
 
 class constructor TInfoEncodeFichier.Create;
@@ -194,7 +188,7 @@ end;
 
 destructor TInfoEncodeFichier.Destroy;
 begin
-
+  FHeaders.Free;
   inherited;
 end;
 
@@ -203,17 +197,28 @@ begin
   Result := FOutputFormats;
 end;
 
-class procedure TInfoEncodeFichier.RegisterOutputFormat(Format: string; EncodeClass: TInfoEncodeFichierClass);
+class procedure TInfoEncodeFichier.RegisterOutputFormat(const Format: string; EncodeClass: TInfoEncodeFichierClass);
 begin
   FOutputFormats.AddOrSetValue(Format, EncodeClass);
 end;
 
-procedure TInfoEncodeFichier.SetLocale(locale: string);
+procedure TInfoEncodeFichier.SetHeaders(List: TData);
 begin
-  FFormatSettings := TFormatSettings.Create(locale);
+  FHeaders.Clear;
+  FHeaders.AddRange(List.ToArray);
 end;
 
-procedure TInfoEncodeFichier.WriteFooterDataset(IBMaster, IBDetail: TIBQuery);
+procedure TInfoEncodeFichier.SetInputLocale(locale: string);
+begin
+  FInputFormatSettings := TFormatSettings.Create(locale);
+end;
+
+procedure TInfoEncodeFichier.SetOutputLocale(locale: string);
+begin
+  FOutputFormatSettings := TFormatSettings.Create(locale);
+end;
+
+procedure TInfoEncodeFichier.WriteFooterDataset;
 begin
 
 end;
@@ -223,7 +228,7 @@ begin
 
 end;
 
-procedure TInfoEncodeFichier.WriteHeaderDataset(IBMaster, IBDetail: TIBQuery);
+procedure TInfoEncodeFichier.WriteHeaderDataset;
 begin
 
 end;
@@ -233,12 +238,7 @@ begin
 
 end;
 
-procedure TInfoEncodeFichier.WriteDetailData(IBMaster, IBDetail: TIBQuery);
-begin
-
-end;
-
-procedure TInfoEncodeFichier.WriteMasterData(IBMaster, IBDetail: TIBQuery);
+procedure TInfoEncodeFichier.WriteData(Data: TData);
 begin
 
 end;

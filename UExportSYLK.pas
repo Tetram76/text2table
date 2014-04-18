@@ -12,21 +12,23 @@ type
     fsSYLK: TFormatSettings;
     FCurrentLine, FCurrentColumn: Integer;
     procedure WriteString(s: string);
-    procedure ProcessData(qry: TIBQuery; var c: Integer);
+    procedure ProcessData(Data: TData; var c: Integer);
   public
     constructor Create(LogCallBack: TLogEvent); override;
     destructor Destroy; override;
 
     procedure WriteHeaderFile; override;
-    procedure WriteHeaderDataset(IBMaster, IBDetail: TIBQuery); override;
-    procedure WriteMasterData(IBMaster, IBDetail: TIBQuery); override;
-    procedure WriteDetailData(IBMaster, IBDetail: TIBQuery); override;
+    procedure WriteHeaderDataset; override;
+    procedure WriteData(Data: TData); override;
     procedure WriteFooterFile; override;
 
     function SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean; override;
   end;
 
 implementation
+
+uses
+  UConvert;
 
 { TEncodeSYLK }
 
@@ -66,8 +68,8 @@ begin
   WriteString('P;PGeneral'); // P = format de données ; PGeneral = index P0 format générique
   WriteString('P;P0.00'); // P = format de données ; P0.00 = index P1 format numérique 2 décimales
   WriteString('P;P0'); // P = format de données ; P0 = index P2 format entier
-  WriteString('P;P' + StringReplace(FormatSettings.ShortDateFormat, '-', '\-', [rfReplaceAll])); // P = format de données ; Pxxx = index P3 format date
-  WriteString('P;P' + StringReplace(FormatSettings.ShortDateFormat, '-', '\-', [rfReplaceAll]) + '\ ' + FormatSettings.LongTimeFormat);
+  WriteString('P;P' + StringReplace(OutputFormatSettings.ShortDateFormat, '-', '\-', [rfReplaceAll])); // P = format de données ; Pxxx = index P3 format date
+  WriteString('P;P' + StringReplace(OutputFormatSettings.ShortDateFormat, '-', '\-', [rfReplaceAll]) + '\ ' + OutputFormatSettings.LongTimeFormat);
   // P = format de données ; Pxxx = index P4 format date/heure
   WriteString('F;P0');
   FCurrentLine := 0;
@@ -76,99 +78,85 @@ end;
 procedure TEncodeSYLK.WriteHeaderDataset;
 var
   c: Integer;
-
-  procedure ProcessHeaderType(qry: TIBQuery);
-  var
-    i: Integer;
-  begin
-    for i := 0 to Pred(qry.Fields.Count) do
-    begin
-      case qry.Fields[i].DataType of
-        ftFloat, ftCurrency:
-          WriteString('F;P1;C' + IntToStr(c));
-        ftInteger:
-          WriteString('F;P2;C' + IntToStr(c));
-        ftDate:
-          WriteString('F;P3;C' + IntToStr(c));
-        ftTimestamp:
-          WriteString('F;P4;C' + IntToStr(c));
-      end;
-      Inc(c);
-    end;
-    WriteString('F;P0;FG0C;R1');
-  end;
-
-  procedure ProcessHeaderName(qry: TIBQuery);
-  var
-    i: Integer;
-  begin
-    for i := 0 to Pred(qry.Fields.Count) do
-    begin
-      WriteString(Format('C;Y%d;X%d;K"%s"', [FCurrentLine, c, qry.Fields[i].DisplayName]));
-      Inc(c);
-    end;
-  end;
-
+  t: string;
+  i: Integer;
 begin
   inherited;
 
   c := 1;
-  if Assigned(IBMaster) then
-    ProcessHeaderType(IBMaster);
-  if Assigned(IBDetail) then
-    ProcessHeaderType(IBDetail);
+  for i := 0 to Pred(Headers.Count) do
+  begin
+    if TConvertOptions.DataTypes.TryGetValue(Headers[i], t) then
+      case t[1] of
+        'n': // ftFloat, ftCurrency:
+          WriteString('F;P1;C' + IntToStr(c));
+        'i': // ftInteger:
+          WriteString('F;P2;C' + IntToStr(c));
+        'd': // ftDate:
+          WriteString('F;P3;C' + IntToStr(c));
+        't': // ftTimestamp:
+          WriteString('F;P4;C' + IntToStr(c));
+      end;
+    Inc(c);
+  end;
 
-  c := 1;
-  Inc(FCurrentLine);
-  if Assigned(IBMaster) then
-    ProcessHeaderName(IBMaster);
-  if Assigned(IBDetail) then
-    ProcessHeaderName(IBDetail);
+  WriteString('F;P0;FG0C;R1');
+
+  if TConvertOptions.AddHeaders then
+  begin
+    c := 1;
+    Inc(FCurrentLine);
+    for i := 0 to Pred(Headers.Count) do
+    begin
+      WriteString(Format('C;Y%d;X%d;K"%s"', [FCurrentLine, c, Headers[i]]));
+      Inc(c);
+    end;
+  end;
 end;
 
-procedure TEncodeSYLK.WriteMasterData(IBMaster, IBDetail: TIBQuery);
+procedure TEncodeSYLK.WriteData(Data: TData);
 begin
   inherited;
 
   FCurrentColumn := 1;
   Inc(FCurrentLine);
-  ProcessData(IBMaster, FCurrentColumn);
-end;
-
-procedure TEncodeSYLK.WriteDetailData(IBMaster, IBDetail: TIBQuery);
-begin
-  inherited;
-
-  ProcessData(IBDetail, FCurrentColumn);
+  ProcessData(Data, FCurrentColumn);
 end;
 
 procedure TEncodeSYLK.WriteString(s: string);
+var
+  b: TArray<Byte>;
 begin
   s := s + #13#10;
-  fs.Write(s[1], Length(s));
+  b := TEncoding.Default.GetBytes(s);
+  fs.Write(b, Length(b));
 end;
 
-procedure TEncodeSYLK.ProcessData(qry: TIBQuery; var c: Integer);
+procedure TEncodeSYLK.ProcessData(Data: TData; var c: Integer);
 var
   i: Integer;
-  s: string;
+  s, t: string;
 begin
-  for i := 0 to Pred(qry.Fields.Count) do
+  for i := 0 to Pred(Data.Count) do
   begin
-    if not qry.Fields[i].IsNull then
+    if Data[i] <> '' then
     begin
-      case qry.Fields[i].DataType of
-        ftDate:
-          s := Format('C;Y%d;X%d;K%d', [FCurrentLine, c, Trunc(qry.Fields[i].AsDateTime)], fsSYLK);
-        ftTimestamp:
-          s := Format('C;Y%d;X%d;K%f', [FCurrentLine, c, qry.Fields[i].AsDateTime], fsSYLK);
-        ftFloat, ftCurrency:
-          s := Format('C;Y%d;X%d;K%s', [FCurrentLine, c, FormatCurr('0.##', qry.Fields[i].AsCurrency, fsSYLK)]);
-        ftInteger:
-          s := Format('C;Y%d;X%d;K%s', [FCurrentLine, c, qry.Fields[i].AsString], fsSYLK);
+      TConvertOptions.DataTypes.TryGetValue(Headers[i], t);
+      if t = '' then
+        t := '*';
+
+      case t[1] of
+        'd':
+          s := Format('C;Y%d;X%d;K%d', [FCurrentLine, c, Trunc(StrToDate(Data[i], InputFormatSettings))], fsSYLK);
+        't':
+          s := Format('C;Y%d;X%d;K%f', [FCurrentLine, c, StrToDateTime(Data[i], InputFormatSettings)], fsSYLK);
+        'n':
+          s := Format('C;Y%d;X%d;K%s', [FCurrentLine, c, FormatCurr('0.##', StrToCurr(Data[i], InputFormatSettings), fsSYLK)]);
+        'i':
+          s := Format('C;Y%d;X%d;K%s', [FCurrentLine, c, Data[i]], fsSYLK);
       else
         begin
-          s := AdjustLineBreaks(qry.Fields[i].AsString);
+          s := AdjustLineBreaks(Data[i]);
           s := StringReplace(s, sLineBreak, Chr(27) + ' :', [rfReplaceAll]);
           s := StringReplace(s, ';', ';;', [rfReplaceAll]);
           s := Format('C;Y%d;X%d;K"%s"', [FCurrentLine, c, s], fsSYLK);
@@ -176,6 +164,7 @@ begin
       end;
       WriteString(s);
     end;
+
     Inc(c);
   end;
 end;

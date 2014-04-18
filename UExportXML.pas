@@ -8,32 +8,24 @@ uses
 type
   TEncodeXML = class(TInfoEncodeFichier)
   private
-    FParentNode, FChildNode: TJclSimpleXMLElem;
+    FNode: TJclSimpleXMLElem;
     FxmlFichier: TJclSimpleXML;
-    FMasterNodeName: string;
-    FRootName: string;
-    FChildNodeName: string;
-    FChildrenNodeName: string;
   public
     procedure WriteHeaderFile; override;
-    procedure WriteMasterData(IBMaster, IBDetail: TIBQuery); override;
-    procedure WriteDetailData(IBMaster, IBDetail: TIBQuery); override;
+    procedure WriteData(Data: TData); override;
 
     constructor Create(LogCallBack: TLogEvent); override;
     destructor Destroy; override;
 
     function SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean; override;
 
-    property RootName: string read FRootName write FRootName;
-    property MasterNodeName: string read FMasterNodeName write FMasterNodeName;
-    property ChildrenNodeName: string read FChildrenNodeName write FChildrenNodeName;
-    property ChildNodeName: string read FChildNodeName write FChildNodeName;
-
-    property ParentNode: TJclSimpleXMLElem read FParentNode;
-    property ChildNode: TJclSimpleXMLElem read FChildNode;
+    property Node: TJclSimpleXMLElem read FNode;
   end;
 
 implementation
+
+uses
+  UConvert;
 
 { TEncodeXML }
 
@@ -54,35 +46,38 @@ end;
 
 function TEncodeXML.SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean;
 begin
-  Result := FxmlFichier.Root.ItemCount > 1;
-  if Result then FxmlFichier.SaveToStream(Stream);
-end;
-
-procedure TEncodeXML.WriteDetailData(IBMaster, IBDetail: TIBQuery);
-begin
-  inherited;
-  if Assigned(FParentNode) then
-    FChildNode := FParentNode.Items.ItemNamed[FChildrenNodeName].Items.Add(FChildNodeName);
+  Result := FxmlFichier.Root.ItemCount > 0;
+  if Result then
+    FxmlFichier.SaveToStream(Stream);
 end;
 
 procedure TEncodeXML.WriteHeaderFile;
 begin
   inherited;
   FxmlFichier.Root.Clear;
-  FxmlFichier.Root.Name := FRootName;
-  FParentNode := nil;
-  FChildNode := nil;
+  FxmlFichier.Root.Name := TConvertOptions.XMLRootName;
+  FNode := nil;
 end;
 
-procedure TEncodeXML.WriteMasterData(IBMaster, IBDetail: TIBQuery);
+procedure TEncodeXML.WriteData(Data: TData);
+var
+  i: Integer;
+  s: string;
 begin
   inherited;
-  FParentNode := FxmlFichier.Root.Items.Add(FMasterNodeName);
+  FNode := FxmlFichier.Root.Items.Add(TConvertOptions.XMLRecordName);
+  for i := 0 to Pred(Headers.Count) do
+  begin
+    s := Data[i];
+    if Pos('<', s) + Pos('>', s) > 0 then
+      FNode.Items.ItemNamed[Headers[i]].Items.AddCData(Headers[i], Data[i])
+    else
+      FNode.Items.ItemNamed[Headers[i]].Items.AddText(Headers[i], Data[i]);
+  end;
 end;
 
 initialization
-  TInfoEncodeFichier.RegisterOutputFormat('xml', TEncodeXML);
+
+TInfoEncodeFichier.RegisterOutputFormat('xml', TEncodeXML);
 
 end.
-
-

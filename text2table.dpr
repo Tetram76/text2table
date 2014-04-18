@@ -5,13 +5,15 @@ program text2table;
 
 uses
   System.SysUtils,
+  System.Classes,
   UCommandLineParameters in 'UCommandLineParameters.pas',
   console.logger in 'console.logger.pas',
   UConvert in 'UConvert.pas',
   UExportXML in 'UExportXML.pas',
   UExportCSV in 'UExportCSV.pas',
   UExportCommun in 'UExportCommun.pas',
-  UExportSYLK in 'UExportSYLK.pas';
+  UExportSYLK in 'UExportSYLK.pas',
+  URegExp in 'URegExp.pas';
 
 // https://code.google.com/p/fbclone/source/browse/trunk/fbclone.dpr
 
@@ -52,22 +54,16 @@ begin
           TConvertOptions.regExFileName := Value;
         end, 'Input');
 
+      CP.RegisterSwitch('il', 'ilocale', 'locale', 'Set locale for input data (default use system locale)', False,
+        procedure(Sender: TObject; const Value: string)
+        begin
+          TConvertOptions.InputLocale := Value;
+        end, 'Input');
+
       CP.RegisterSwitch('o', 'output', 'filename', 'Output filename to write (default: use OUTPUT pipe)', False,
         procedure(Sender: TObject; const Value: string)
         begin
           TConvertOptions.OutputFilename := Value;
-        end, 'Output');
-
-      CP.RegisterFlag('', 'headers', '', 'Include headers in output file when relevant (default no)', False,
-        procedure(Sender: TObject; const Value: string)
-        begin
-          TConvertOptions.AddHeaders := True;
-        end, 'Output');
-
-      CP.RegisterSwitch('l', 'locale', 'locale', 'Set locale for output data formatting (default use system locale)', False,
-        procedure(Sender: TObject; const Value: string)
-        begin
-          TConvertOptions.Locale := Value;
         end, 'Output');
 
       outputFormats := TInfoEncodeFichier.outputFormats.Keys.ToArray;
@@ -82,10 +78,59 @@ begin
 
       CP.RegisterSwitch('f', 'format', 'format', 'Set one of output format:' + s, False,
         procedure(Sender: TObject; const Value: string)
+        var
+          o: TInfoEncodeFichierClass;
         begin
-          if not TInfoEncodeFichier.outputFormats.TryGetValue(Value, TConvertOptions.OutputFormat) then
+          if TInfoEncodeFichier.outputFormats.TryGetValue(Value, o) then
+            TConvertOptions.OutputFormat := o
+          else
             raise ECommandLineError.Create('Unknown output format : ' + Value);
         end, 'Output');
+
+      CP.RegisterSwitch('l', 'locale', 'locale', 'Set locale for output data formatting (default use system locale)', False,
+        procedure(Sender: TObject; const Value: string)
+        begin
+          TConvertOptions.OutputLocale := Value;
+        end, 'Output format');
+
+      CP.RegisterFlag('', 'headers', '', 'Include headers in output file when relevant (default no)', False,
+        procedure(Sender: TObject; const Value: string)
+        begin
+          TConvertOptions.AddHeaders := True;
+        end, 'Output format');
+
+      CP.RegisterSwitch('dt', 'datatype', 'field=type',
+        'Define data type for each field in output'#13#10'Use one of those <type> :'#13#10'  - * (text, default)'#13#10'  - i (integer)'#13#10'  - n (float, numeric, currency)'#13#10'  - d (date)'#13#10'  - t (timestamp)',
+        False,
+        procedure(Sender: TObject; const Value: string)
+        var
+          sl: TStringList;
+          f, t: string;
+        begin
+          sl := TStringList.Create;
+          try
+            sl.Add(Value);
+            f := LowerCase(sl.Names[0], TLocaleOptions.loInvariantLocale);
+            t := LowerCase(sl.ValueFromIndex[0], TLocaleOptions.loInvariantLocale);
+          finally
+            sl.Free;
+          end;
+          if not CharInSet(t[1], ['*', 'i', 'n', 'd', 't']) then
+            raise ECommandLineError.Create('Unknown data type : ' + Value);
+          TConvertOptions.DataTypes.Add(f, t);
+        end, 'Output format');
+
+      CP.RegisterSwitch('', 'rootnodename', 'name', 'Set Root node name in XML output (default "data")', False,
+        procedure(Sender: TObject; const Value: string)
+        begin
+          TConvertOptions.XMLRootName := Value;
+        end, 'Output format');
+
+      CP.RegisterSwitch('', 'recordnodename', 'name', 'Set Record node name in XML output (default "record")', False,
+        procedure(Sender: TObject; const Value: string)
+        begin
+          TConvertOptions.XMLRootName := Value;
+        end, 'Output format');
 
       CP.Parse;
 
@@ -132,18 +177,10 @@ begin
 
   try
     TConvertRuntime.ProcessConvert;
-{$IFDEF DEBUG}
-    if TConvertOptions.OutputFilename = '' then
-    begin
-      WriteLn;
-      WriteLn('[DEBUG] Press Return to terminate');
-      ReadLn;
-    end;
-{$ENDIF}
   except
     on E: Exception do
     begin
-      l.Error('General exception ' + E.Message);
+      l.Error('General exception, ' + E.Message);
       Halt(1);
     end;
   end;

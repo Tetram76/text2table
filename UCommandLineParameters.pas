@@ -3,7 +3,7 @@ unit UCommandLineParameters;
 interface
 
 uses
-  SysUtils, Classes, Generics.Collections;
+  SysUtils, Classes, Generics.Defaults, Generics.Collections;
 
 type
   ECommandLineError = Exception;
@@ -46,30 +46,38 @@ type
   end;
 
   TCommandLineParameters = class
+  private type
+    TParameters = class(TStringList)
+    private
+      function GetObjectByString(section: string): TList<TCommandLineParameter>;
+      procedure PutObjectByString(section: string; const Value: TList<TCommandLineParameter>);
+    public
+      property Objects[section: string]: TList<TCommandLineParameter> read GetObjectByString write PutObjectByString;
+    end;
   private
-    FParameters: TDictionary<string, TList<TCommandLineParameter>>;
+    FParameters: TParameters;
     FMissing: TList<TCommandLineParameter>;
     function CreateParameter(const Short, Long, ShortDescription, Description: string; ParameterType: TParameterType; Mandatory: Boolean;
       Event: TOnParameterEvent; EventReference: TOnParameterEventReference): TCommandLineParameter;
     function FindParameter(const Value: string): TCommandLineParameter;
     function FindNextParameter(lastShownParameter: TCommandLineParameter): TCommandLineParameter;
     function GetFlag(const ShortParameter: string): Boolean;
-    procedure AddParameters(const Section: string; Parameter: TCommandLineParameter);
+    procedure AddParameters(const section: string; Parameter: TCommandLineParameter);
   public
     constructor Create;
     destructor Destroy; override;
 
-    function RegisterFlag(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent; const Section: string = '')
+    function RegisterFlag(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent; const section: string = '')
       : TCommandLineParameter; overload;
     function RegisterFlag(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference;
-      const Section: string = ''): TCommandLineParameter; overload;
-    function RegisterSwitch(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent; const Section: string = '')
+      const section: string = ''): TCommandLineParameter; overload;
+    function RegisterSwitch(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent; const section: string = '')
       : TCommandLineParameter; overload;
     function RegisterSwitch(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference;
-      const Section: string = ''): TCommandLineParameter; overload;
-    function RegisterParameter(const ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent; const Section: string = '')
+      const section: string = ''): TCommandLineParameter; overload;
+    function RegisterParameter(const ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent; const section: string = '')
       : TCommandLineParameter; overload;
-    function RegisterParameter(const ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference; const Section: string = '')
+    function RegisterParameter(const ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference; const section: string = '')
       : TCommandLineParameter; overload;
 
     function PrintSyntax: String;
@@ -118,19 +126,20 @@ procedure SplitString(const inlineString: string; List: TStrings; MaxWidth: Inte
     p := pFirst;
     while (p^ <> #0) do
     begin
-      while (p^ <> #0) and (p - pFirst < MaxWidth) do
+      while (p^ <> #0) and (p - pFirst <= MaxWidth) do
         Inc(p);
 
       if (p^ <> #0) then
       begin
-        while (p > pFirst) and (p^ <> #32) do
+        Dec(p);
+        while ((p+1) > pFirst) and ((p+1)^ <> #32) do
           Dec(p);
         Inc(p);
       end;
 
       SetLength(buf, p - pFirst);
       StrLCopy(@buf[1], pFirst, Length(buf));
-      List.Add(buf);
+      List.Add(TrimRight(buf));
 
       while (p^ <> #0) and (p^ = #32) do
         Inc(p);
@@ -156,8 +165,8 @@ end;
 
 function TCommandLineParameter.ToLongSyntax: string;
 const
-  tabParam = 8;
-  tabDesc = 24;
+  tabParam = 4;
+  tabDesc = 20;
   screenWidth = 80;
 
 var
@@ -188,7 +197,7 @@ begin
   begin
     sl := TStringList.Create;
     try
-      SplitString(s, sl, screenWidth - tabDesc);
+      SplitString(s, sl, screenWidth - tabDesc - 1);
 
       for i := 0 to Pred(sl.Count) do
         if (i = 0) and (Length(Result) < tabDesc) then
@@ -232,21 +241,23 @@ end;
 
 { TCommandLineParameters }
 
-procedure TCommandLineParameters.AddParameters(const Section: string; Parameter: TCommandLineParameter);
+procedure TCommandLineParameters.AddParameters(const section: string; Parameter: TCommandLineParameter);
 var
   L: TList<TCommandLineParameter>;
 begin
-  if not FParameters.TryGetValue(Section, L) then
+  if FParameters.IndexOf(section) = -1 then
   begin
     L := TObjectList<TCommandLineParameter>.Create(True);
-    FParameters.Add(Section, L);
-  end;
+    FParameters.AddObject(section, L);
+  end
+  else
+    L := FParameters.Objects[section];
   L.Add(Parameter);
 end;
 
 constructor TCommandLineParameters.Create;
 begin
-  FParameters := TObjectDictionary < string, TList < TCommandLineParameter >>.Create([doOwnsValues]);
+  FParameters := TParameters.Create(True);
   FMissing := TList<TCommandLineParameter>.Create;
 end;
 
@@ -275,10 +286,10 @@ end;
 
 function TCommandLineParameters.FindNextParameter(lastShownParameter: TCommandLineParameter): TCommandLineParameter;
 var
-  Section: string;
+  section: string;
 begin
-  for Section in FParameters.Keys do
-    for Result in FParameters[Section] do
+  for section in FParameters do
+    for Result in FParameters.Objects[section] do
     begin
       if (lastShownParameter = nil) and (Result.ParameterType = ptParameter) then
         Exit
@@ -291,7 +302,7 @@ end;
 function TCommandLineParameters.FindParameter(const Value: string): TCommandLineParameter;
 var
   longParam: Boolean;
-  Section: string;
+  section: string;
 begin
   Result := nil;
   if Value = '' then
@@ -299,8 +310,8 @@ begin
 
   longParam := Value[1] = '-';
 
-  for Section in FParameters.Keys do
-    for Result in FParameters[Section] do
+  for section in FParameters do
+    for Result in FParameters.Objects[section] do
     begin
       if Result.FParameterType in [ptFlag, ptSwitch] then
         if ((Result.ShortParameter = Value) and not longParam) or (('-' + Result.LongParameter = Value) and longParam) then
@@ -311,12 +322,12 @@ end;
 
 function TCommandLineParameters.GetFlag(const ShortParameter: string): Boolean;
 var
-  Section: string;
+  section: string;
   p: TCommandLineParameter;
 begin
   Result := False;
-  for Section in FParameters.Keys do
-    for p in FParameters[Section] do
+  for section in FParameters do
+    for p in FParameters.Objects[section] do
     begin
       if ((p.ShortParameter = ShortParameter) or ((p.ShortParameter = '') and (p.LongParameter = ShortParameter))) then
       begin
@@ -329,13 +340,13 @@ end;
 procedure TCommandLineParameters.Parse;
 var
   i: Integer;
-  Section, p: string;
+  section, p: string;
 
   param, lastParam: TCommandLineParameter;
 begin
   FMissing.Clear;
-  for Section in FParameters.Keys do
-    for param in FParameters[Section] do
+  for section in FParameters do
+    for param in FParameters.Objects[section] do
       if param.Mandatory then
         FMissing.Add(param);
 
@@ -380,14 +391,14 @@ end;
 function TCommandLineParameters.PrintHelp: string;
 var
   s: string;
-  Section: string;
+  section: string;
   p: TCommandLineParameter;
 begin
   s := 'Arguments allowed for this application: '#13#10;
-  for Section in FParameters.Keys do
+  for section in FParameters do
   begin
-    s := s + #13#10'' + Section + ':';
-    for p in FParameters.Items[Section] do
+    s := s + #13#10'' + section + ':';
+    for p in FParameters.Objects[section] do
       s := s + #13#10 + p.ToLongSyntax;
   end;
   Result := s;
@@ -395,61 +406,73 @@ end;
 
 function TCommandLineParameters.PrintSyntax: String;
 var
-  s, Section: string;
+  s, section: string;
   p: TCommandLineParameter;
 begin
   s := 'Syntax: ' + ExtractFileName(ParamStr(0));
-  for Section in FParameters.Keys do
-    for p in FParameters[Section] do
+  for section in FParameters do
+    for p in FParameters.Objects[section] do
       s := s + p.ToShortSyntax;
   Result := s;
 end;
 
 function TCommandLineParameters.RegisterFlag(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent;
-  const Section: string = ''): TCommandLineParameter;
+  const section: string = ''): TCommandLineParameter;
 begin
   Result := CreateParameter(Short, Long, ShortDescription, Description, ptFlag, Mandatory, Event, nil);
-  AddParameters(Section, Result);
+  AddParameters(section, Result);
 end;
 
 function TCommandLineParameters.RegisterFlag(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference;
-  const Section: string = ''): TCommandLineParameter;
+  const section: string = ''): TCommandLineParameter;
 begin
   Result := CreateParameter(Short, Long, ShortDescription, Description, ptFlag, Mandatory, nil, Event);
-  AddParameters(Section, Result);
+  AddParameters(section, Result);
 end;
 
 function TCommandLineParameters.RegisterParameter(const ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent;
-  const Section: string = ''): TCommandLineParameter;
+  const section: string = ''): TCommandLineParameter;
 begin
   Result := CreateParameter('', '', ShortDescription, Description, ptSwitch, Mandatory, Event, nil);
-  AddParameters(Section, Result);
+  AddParameters(section, Result);
 end;
 
 function TCommandLineParameters.RegisterParameter(const ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference;
-  const Section: string = ''): TCommandLineParameter;
+  const section: string = ''): TCommandLineParameter;
 begin
   Result := CreateParameter('', '', ShortDescription, Description, ptParameter, Mandatory, nil, Event);
-  AddParameters(Section, Result);
+  AddParameters(section, Result);
 end;
 
 function TCommandLineParameters.RegisterSwitch(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEvent;
-  const Section: string = ''): TCommandLineParameter;
+  const section: string = ''): TCommandLineParameter;
 begin
   Result := CreateParameter(Short, Long, ShortDescription, Description, ptSwitch, Mandatory, Event, nil);
-  AddParameters(Section, Result);
+  AddParameters(section, Result);
 end;
 
 function TCommandLineParameters.RegisterSwitch(const Short, Long, ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference;
-  const Section: string = ''): TCommandLineParameter;
+  const section: string = ''): TCommandLineParameter;
 begin
   Result := CreateParameter(Short, Long, ShortDescription, Description, ptSwitch, Mandatory, nil, Event);
-  AddParameters(Section, Result);
+  AddParameters(section, Result);
 end;
 
 function TCommandLineParameters.Validate: Boolean;
 begin
   Result := FMissing.Count = 0;
+end;
+
+{ TCommandLineParameters.TParameters }
+
+function TCommandLineParameters.TParameters.GetObjectByString(section: string): TList<TCommandLineParameter>;
+begin
+  Result := TList<TCommandLineParameter>(inherited GetObject(IndexOf(section)));
+end;
+
+procedure TCommandLineParameters.TParameters.PutObjectByString(section: string; const Value: TList<TCommandLineParameter>);
+begin
+  inherited PutObject(IndexOf(section), Value);
 end;
 
 end.

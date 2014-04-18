@@ -3,20 +3,32 @@ unit UConvert;
 interface
 
 uses
-  Windows, SysUtils, Classes, System.IOUtils, UExportCommun;
+  Windows, SysUtils, Classes, System.IOUtils, UExportCommun, Generics.Collections;
 
 type
   TConvertOptions = class
+  private
+    class var FOutputFormat: TInfoEncodeFichierClass;
+    class function GetOutputFormat: TInfoEncodeFichierClass; static;
   public
-    class var OutputFormat: TInfoEncodeFichierClass;
-    class var InputFilename, OutputFilename: TFileName;
+    class var InputFilename: TFileName;
+    class var OutputFilename: TFileName;
+
+  class var
+    InputLocale: string;
+
+    class property OutputFormat: TInfoEncodeFichierClass read GetOutputFormat write FOutputFormat;
     class var AddHeaders: Boolean;
-    class var Locale: string;
+    class var OutputLocale: string;
+    class var XMLRootName: string;
+    class var XMLRecordName: string;
+    class var DataTypes: TDictionary<string, string>;
 
     class var RegEx: string;
     class var regExFileName: TFileName;
 
     class constructor Create;
+    class destructor Destroy;
   end;
 
   TConvertRuntime = class
@@ -32,6 +44,9 @@ type
 
 implementation
 
+uses
+  URegExp;
+
 { TConvertOptions }
 
 class constructor TConvertOptions.Create;
@@ -42,8 +57,23 @@ begin
   regExFileName := '';
 
   OutputFilename := '';
-  TInfoEncodeFichier.OutputFormats.TryGetValue('csv', OutputFormat);
   AddHeaders := False;
+
+  XMLRootName := 'data';
+  XMLRecordName := 'record';
+  DataTypes := TDictionary<string, string>.Create;
+end;
+
+class destructor TConvertOptions.Destroy;
+begin
+  DataTypes.Free;
+end;
+
+class function TConvertOptions.GetOutputFormat: TInfoEncodeFichierClass;
+begin
+  Result := FOutputFormat;
+  if Result = nil then
+    TInfoEncodeFichier.OutputFormats.TryGetValue('csv', Result);
 end;
 
 { TConvertRuntime }
@@ -74,26 +104,41 @@ end;
 class procedure TConvertRuntime.ProcessConvert;
 var
   EncodeOutput: TInfoEncodeFichier;
+  ss: TStringStream;
 begin
   PrepareStreams;
   try
     EncodeOutput := TConvertOptions.OutputFormat.Create(nil);
     try
-      EncodeOutput.SetLocale(TConvertOptions.Locale);
+      EncodeOutput.SetOutputLocale(TConvertOptions.OutputLocale);
 
-      // TODO: compiler la regex
-      // TODO: recupérer la liste des noms des champs capturants de la regex
-      EncodeOutput.SetHeaders(nil);
+      if TConvertOptions.regExFileName <> '' then
+      begin
+        ss := TStringStream.Create;
+        try
+          ss.LoadFromFile(TConvertOptions.regExFileName);
+          TConvertOptions.RegEx := ss.DataString;
+        finally
+          ss.Free;
+        end;
+      end;
 
-      EncodeOutput.WriteHeaderFile;
-      EncodeOutput.WriteHeaderDataset(nil,nil);
-
-      // TODO: appliquer la regex sur inputStream
-      // TODO: pour chaque correspondance de la regex, ecrire un enregistrement :
-      EncodeOutput.WriteMasterData(nil, nil);
-
-      EncodeOutput.WriteFooterDataset(nil,nil);
-      EncodeOutput.WriteFooterFile;
+      ss := TStringStream.Create;
+      try
+        if TConvertRuntime.inputStream.Size = 0 then
+          raise EStreamError.Create('No data to parse');
+        try
+          ss.CopyFrom(TConvertRuntime.inputStream, 0);
+        except
+          if TConvertRuntime.inputStream.Size = -1 then
+            raise EStreamError.Create('No data to parse')
+          else
+            raise;
+        end;
+        EncodeOutput.BuildFile(ss.DataString, TConvertOptions.RegEx);
+      finally
+        ss.Free;
+      end;
 
       EncodeOutput.SaveToStream(outputStream, TEncoding.Default);
     finally
