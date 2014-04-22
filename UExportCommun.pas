@@ -33,6 +33,8 @@ type
     FInputFormatSettings: TFormatSettings;
     FOutputFormatSettings: TFormatSettings;
     FHeaders: TData;
+    FWriteBOM: Boolean;
+    procedure SetWriteBOM(const Value: Boolean);
   protected
     FFlatBuild: Boolean;
   public
@@ -67,6 +69,8 @@ type
     property OnWriteData: TProcessDataCallback read FOnWriteData write FOnWriteData;
     property OnWriteFooterDataset: TProcessCallback read FOnWriteFooterDataset write FOnWriteFooterDataset;
     property OnWriteFooterFile: TProcessCallback read FOnWriteFooterFile write FOnWriteFooterFile;
+
+    property WriteBOM: Boolean read FWriteBOM write SetWriteBOM;
   end;
 
   TWindowsStringList = class(TStringList)
@@ -174,6 +178,8 @@ begin
 
   SetOutputLocale('');
   SetInputLocale('');
+
+  FWriteBOM := True;
 end;
 
 class constructor TInfoEncodeFichier.Create;
@@ -216,6 +222,11 @@ end;
 procedure TInfoEncodeFichier.SetOutputLocale(locale: string);
 begin
   FOutputFormatSettings := TFormatSettings.Create(locale);
+end;
+
+procedure TInfoEncodeFichier.SetWriteBOM(const Value: Boolean);
+begin
+  FWriteBOM := Value;
 end;
 
 procedure TInfoEncodeFichier.WriteFooterDataset;

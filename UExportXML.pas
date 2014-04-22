@@ -25,7 +25,7 @@ type
 implementation
 
 uses
-  UConvert;
+  UConvert, JclStreams;
 
 { TEncodeXML }
 
@@ -48,7 +48,10 @@ function TEncodeXML.SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean;
 begin
   Result := FxmlFichier.Root.ItemCount > 0;
   if Result then
-    FxmlFichier.SaveToStream(Stream);
+    if Encoding = TEncoding.UTF8 then
+      FxmlFichier.SaveToStream(Stream, seUTF8)
+    else
+      FxmlFichier.SaveToStream(Stream);
 end;
 
 procedure TEncodeXML.WriteHeaderFile;

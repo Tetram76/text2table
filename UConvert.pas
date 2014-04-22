@@ -7,19 +7,34 @@ uses
 
 type
   TConvertOptions = class
+  public type
+    TDecodeParams = class
+      class procedure I_switch(Sender: TObject; const Value: string);
+      class procedure RF_switch(Sender: TObject; const Value: string);
+      class procedure R_switch(Sender: TObject; const Value: string);
+      class procedure IL_switch(Sender: TObject; const Value: string);
+      class procedure O_switch(Sender: TObject; const Value: string);
+      class procedure F_switch(Sender: TObject; const Value: string);
+      class procedure L_switch(Sender: TObject; const Value: string);
+      class procedure utf8_flag(Sender: TObject; const Value: string);
+      class procedure headers_flag(Sender: TObject; const Value: string);
+      class procedure DT_switch(Sender: TObject; const Value: string);
+      class procedure rootnodename_switch(Sender: TObject; const Value: string);
+      class procedure recordnodename_switch(Sender: TObject; const Value: string);
+    end;
+
   private
     class var FOutputFormat: TInfoEncodeFichierClass;
     class function GetOutputFormat: TInfoEncodeFichierClass; static;
+    class function GetOuputEncoding: TEncoding; static;
   public
+
     class var InputFilename: TFileName;
     class var OutputFilename: TFileName;
-
-  class var
-    InputLocale: string;
-
-    class property OutputFormat: TInfoEncodeFichierClass read GetOutputFormat write FOutputFormat;
+    class var InputLocale: string;
     class var AddHeaders: Boolean;
     class var OutputLocale: string;
+    class var OutputUTF8: Boolean;
     class var XMLRootName: string;
     class var XMLRecordName: string;
     class var DataTypes: TDictionary<string, string>;
@@ -29,6 +44,9 @@ type
 
     class constructor Create;
     class destructor Destroy;
+
+    class property OutputFormat: TInfoEncodeFichierClass read GetOutputFormat write FOutputFormat;
+    class property OutputEncoding: TEncoding read GetOuputEncoding;
   end;
 
   TConvertRuntime = class
@@ -45,7 +63,7 @@ type
 implementation
 
 uses
-  URegExp;
+  URegExp, UCommandLineParameters;
 
 { TConvertOptions }
 
@@ -67,6 +85,14 @@ end;
 class destructor TConvertOptions.Destroy;
 begin
   DataTypes.Free;
+end;
+
+class function TConvertOptions.GetOuputEncoding: TEncoding;
+begin
+  if OutputUTF8 then
+    Result := TEncoding.UTF8
+  else
+    Result := TEncoding.Default;
 end;
 
 class function TConvertOptions.GetOutputFormat: TInfoEncodeFichierClass;
@@ -103,6 +129,7 @@ end;
 
 class procedure TConvertRuntime.ProcessConvert;
 var
+  Preamble: TBytes;
   EncodeOutput: TInfoEncodeFichier;
   ss: TStringStream;
 begin
@@ -140,13 +167,103 @@ begin
         ss.Free;
       end;
 
-      EncodeOutput.SaveToStream(outputStream, TEncoding.Default);
+      if TConvertOptions.OutputFilename <> '' then
+        outputStream.Size := 0;
+
+      if EncodeOutput.WriteBOM then
+      begin
+        Preamble := TConvertOptions.OutputEncoding.GetPreamble;
+        if Length(Preamble) > 0 then
+          outputStream.WriteBuffer(Preamble, Length(Preamble));
+      end;
+
+      EncodeOutput.SaveToStream(outputStream, TConvertOptions.OutputEncoding);
     finally
       EncodeOutput.Free;
     end;
   finally
     CloseStreams;
   end;
+end;
+
+{ TConvertOptions.TDecodeParams }
+
+class procedure TConvertOptions.TDecodeParams.DT_switch(Sender: TObject; const Value: string);
+var
+  sl: TStringList;
+  f, t: string;
+begin
+  sl := TStringList.Create;
+  try
+    sl.Add(Value);
+    f := LowerCase(sl.Names[0], TLocaleOptions.loInvariantLocale);
+    t := LowerCase(sl.ValueFromIndex[0], TLocaleOptions.loInvariantLocale);
+  finally
+    sl.Free;
+  end;
+  if not CharInSet(t[1], ['*', 'i', 'n', 'd', 't']) then
+    raise ECommandLineError.Create('Unknown data type : ' + Value);
+  TConvertOptions.DataTypes.Add(f, t);
+end;
+
+class procedure TConvertOptions.TDecodeParams.F_switch(Sender: TObject; const Value: string);
+var
+  o: TInfoEncodeFichierClass;
+begin
+  if TInfoEncodeFichier.OutputFormats.TryGetValue(Value, o) then
+    TConvertOptions.OutputFormat := o
+  else
+    raise ECommandLineError.Create('Unknown output format : ' + Value);
+end;
+
+class procedure TConvertOptions.TDecodeParams.headers_flag(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.AddHeaders := True;
+end;
+
+class procedure TConvertOptions.TDecodeParams.IL_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.InputLocale := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.I_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.InputFilename := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.L_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.OutputLocale := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.O_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.OutputFilename := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.recordnodename_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.XMLRootName := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.RF_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.regExFileName := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.rootnodename_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.XMLRootName := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.R_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.RegEx := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.utf8_flag(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.OutputUTF8 := True;
 end;
 
 end.

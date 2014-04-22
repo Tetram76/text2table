@@ -123,7 +123,7 @@ procedure TEncodeCSV.WriteRawString(fs: TStream; s: string);
 var
   b: TArray<Byte>;
 begin
-  b := TEncoding.Default.GetBytes(s);
+  b := TConvertOptions.OutputEncoding.GetBytes(s);
   fs.Write(b, Length(b));
 end;
 

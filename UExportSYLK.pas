@@ -39,6 +39,7 @@ begin
   fs := TMemoryStream.Create;
   fsSYLK.ShortDateFormat := '';
   fsSYLK.DecimalSeparator := '.';
+  WriteBOM := False;
 end;
 
 destructor TEncodeSYLK.Destroy;
@@ -128,7 +129,7 @@ var
   b: TArray<Byte>;
 begin
   s := s + #13#10;
-  b := TEncoding.Default.GetBytes(s);
+  b := TConvertOptions.OutputEncoding.GetBytes(s);
   fs.Write(b, Length(b));
 end;
 
