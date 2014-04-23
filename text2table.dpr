@@ -31,10 +31,10 @@ begin
   CP := TCommandLineParameters.Create;
   try
     try
-      CP.RegisterFlag('h', 'help', '', 'Show this help message', False,
+      CP.RegisterFlag('', 'help', '', 'Show this help message', False,
         procedure(Sender: TObject; const Value: string)
         begin
-          l.Info(CP.PrintSyntax);
+          l.Info(CP.PrintSyntax(False));
           l.Info;
           l.Info(CP.PrintHelp);
           Halt(0);
@@ -64,7 +64,7 @@ begin
 
       CP.RegisterFlag('', 'utf8', '', 'Use UTF8 encoding for output formatting when applicable (default use system)', False,
         TConvertOptions.TDecodeParams.utf8_flag, 'Output format');
-      CP.RegisterFlag('', 'headers', '', 'Include headers in output file when relevant (default no)', False, TConvertOptions.TDecodeParams.headers_flag,
+      CP.RegisterFlag('h', 'headers', '', 'Include headers in output file when relevant (default no)', False, TConvertOptions.TDecodeParams.headers_flag,
         'Output format');
       CP.RegisterSwitch('dt', 'datatype', 'field=type',
         'Define data type for each field in output.'#13#10'Use one -dt flag for each field to define. Use one of those <type> :'#13#10'  - * (text, default)'#13#10'  - i (integer)'#13#10'  - n (float, numeric, currency)'#13#10'  - d (date)'#13#10'  - t (timestamp)',

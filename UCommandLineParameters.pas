@@ -62,6 +62,7 @@ type
     function FindParameter(const Value: string): TCommandLineParameter;
     function FindNextParameter(lastShownParameter: TCommandLineParameter): TCommandLineParameter;
     function GetFlag(const ShortParameter: string): Boolean;
+    function GetParameter(const ShortParameter: string): TCommandLineParameter;
     procedure AddParameters(const section: string; Parameter: TCommandLineParameter);
   public
     constructor Create;
@@ -80,7 +81,7 @@ type
     function RegisterParameter(const ShortDescription, Description: string; Mandatory: Boolean; Event: TOnParameterEventReference; const section: string = '')
       : TCommandLineParameter; overload;
 
-    function PrintSyntax: String;
+    function PrintSyntax(Full: Boolean = True): String;
     function PrintHelp: string;
 
     procedure Parse;
@@ -132,7 +133,7 @@ procedure SplitString(const inlineString: string; List: TStrings; MaxWidth: Inte
       if (p^ <> #0) then
       begin
         Dec(p);
-        while ((p+1) > pFirst) and ((p+1)^ <> #32) do
+        while ((p + 1) > pFirst) and ((p + 1)^ <> #32) do
           Dec(p);
         Inc(p);
       end;
@@ -322,16 +323,24 @@ end;
 
 function TCommandLineParameters.GetFlag(const ShortParameter: string): Boolean;
 var
+  p: TCommandLineParameter;
+begin
+  p := GetParameter(ShortParameter);
+  Result := Assigned(p) and p.FPresent;
+end;
+
+function TCommandLineParameters.GetParameter(const ShortParameter: string): TCommandLineParameter;
+var
   section: string;
   p: TCommandLineParameter;
 begin
-  Result := False;
+  Result := nil;
   for section in FParameters do
     for p in FParameters.Objects[section] do
     begin
       if ((p.ShortParameter = ShortParameter) or ((p.ShortParameter = '') and (p.LongParameter = ShortParameter))) then
       begin
-        Result := p.FPresent;
+        Result := p;
         Break;
       end;
     end;
@@ -404,7 +413,7 @@ begin
   Result := s;
 end;
 
-function TCommandLineParameters.PrintSyntax: String;
+function TCommandLineParameters.PrintSyntax(Full: Boolean): String;
 var
   s, section: string;
   p: TCommandLineParameter;
@@ -413,6 +422,14 @@ begin
   for section in FParameters do
     for p in FParameters.Objects[section] do
       s := s + p.ToShortSyntax;
+
+  if Full then
+  begin
+    p := GetParameter('help');
+    if p <> nil then
+      s := s + #13#10#13#10 + Format('Use %s --help for full help', [ExtractFileName(ParamStr(0))]);
+  end;
+
   Result := s;
 end;
 
