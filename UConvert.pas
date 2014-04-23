@@ -35,8 +35,8 @@ type
     class function GetOutputFormat: TInfoEncodeFichierClass; static;
     class function GetOuputEncoding: TEncoding; static;
     class function GetInutEncoding: TEncoding; static;
-  public
 
+  public
     class var InputFilename: TFileName;
     class var OutputFilename: TFileName;
     class var InputLocale: string;
