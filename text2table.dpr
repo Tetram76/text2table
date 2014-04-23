@@ -47,6 +47,8 @@ begin
 
       CP.RegisterSwitch('il', 'ilocale', 'locale', 'Set locale for input data (default use system locale)', False,
         TConvertOptions.TDecodeParams.IL_switch, 'Input');
+      CP.RegisterFlag('', 'iutf8', '', 'Use UTF8 encoding for input decoding when applicable (default use system)', False,
+        TConvertOptions.TDecodeParams.iutf8_flag, 'Input');
 
       CP.RegisterSwitch('o', 'output', 'filename', 'Output filename to write (default: use OUTPUT stream)', False, TConvertOptions.TDecodeParams.O_switch,
         'Output');

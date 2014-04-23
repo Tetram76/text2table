@@ -111,6 +111,7 @@ begin
 
   Inc(FCurrentLine);
   ProcessData(fsData, Data);
+  WriteRawString(fsData, #13#10);
 end;
 
 procedure TEncodeCSV.WriteRawString(fs: TStream; s: string);

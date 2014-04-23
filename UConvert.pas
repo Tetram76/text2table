@@ -17,6 +17,7 @@ type
       class procedure F_switch(Sender: TObject; const Value: string);
       class procedure L_switch(Sender: TObject; const Value: string);
       class procedure utf8_flag(Sender: TObject; const Value: string);
+      class procedure iutf8_flag(Sender: TObject; const Value: string);
       class procedure headers_flag(Sender: TObject; const Value: string);
       class procedure DT_switch(Sender: TObject; const Value: string);
       class procedure rootnodename_switch(Sender: TObject; const Value: string);
@@ -33,6 +34,7 @@ type
     class var FOutputFormat: TInfoEncodeFichierClass;
     class function GetOutputFormat: TInfoEncodeFichierClass; static;
     class function GetOuputEncoding: TEncoding; static;
+    class function GetInutEncoding: TEncoding; static;
   public
 
     class var InputFilename: TFileName;
@@ -41,6 +43,7 @@ type
     class var AddHeaders: Boolean;
     class var OutputLocale: string;
     class var OutputUTF8: Boolean;
+    class var InputUTF8: Boolean;
     class var XMLRootName: string;
     class var XMLRecordName: string;
     class var DataTypes: TDictionary<string, char>;
@@ -53,6 +56,7 @@ type
 
     class property OutputFormat: TInfoEncodeFichierClass read GetOutputFormat write FOutputFormat;
     class property OutputEncoding: TEncoding read GetOuputEncoding;
+    class property InputEncoding: TEncoding read GetInutEncoding;
 
     class var EmptyData: Boolean;
 
@@ -99,6 +103,14 @@ end;
 class destructor TConvertOptions.Destroy;
 begin
   DataTypes.Free;
+end;
+
+class function TConvertOptions.GetInutEncoding: TEncoding;
+begin
+  if InputUTF8 then
+    Result := TEncoding.UTF8
+  else
+    Result := TEncoding.Default;
 end;
 
 class function TConvertOptions.GetOuputEncoding: TEncoding;
@@ -164,7 +176,7 @@ begin
         end;
       end;
 
-      ss := TStringStream.Create;
+      ss := TStringStream.Create('', TConvertOptions.InputEncoding);
       try
         if TConvertRuntime.inputStream.Size = 0 then
           raise EStreamError.Create('No data to parse');
@@ -269,6 +281,11 @@ end;
 class procedure TConvertOptions.TDecodeParams.IL_switch(Sender: TObject; const Value: string);
 begin
   TConvertOptions.InputLocale := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.iutf8_flag(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.InputUTF8 := True;
 end;
 
 class procedure TConvertOptions.TDecodeParams.I_switch(Sender: TObject; const Value: string);
