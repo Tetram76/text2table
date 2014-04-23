@@ -3,7 +3,7 @@ unit UExportXML;
 interface
 
 uses
-  SysUtils, Classes, UExportCommun, JclSimpleXML, IBQuery;
+  SysUtils, Classes, UExportCommun, JclSimpleXML;
 
 type
   TEncodeXML = class(TInfoEncodeFichier)
@@ -14,10 +14,11 @@ type
     procedure WriteHeaderFile; override;
     procedure WriteData(Data: TData); override;
 
-    constructor Create(LogCallBack: TLogEvent); override;
+    constructor Create; override;
     destructor Destroy; override;
 
-    function SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean; override;
+    function IsEmpty: Boolean; override;
+    procedure SaveToStream(Stream: TStream; Encoding: TEncoding); override;
 
     property Node: TJclSimpleXMLElem read FNode;
   end;
@@ -25,15 +26,14 @@ type
 implementation
 
 uses
-  UConvert, JclStreams;
+  UConvert, JclStreams, System.Generics.Collections;
 
 { TEncodeXML }
 
-constructor TEncodeXML.Create(LogCallBack: TLogEvent);
+constructor TEncodeXML.Create;
 begin
-  inherited Create(LogCallBack);
+  inherited;
   FFlatBuild := False;
-  Extension := '.xml';
   FxmlFichier := TJclSimpleXML.Create;
   FxmlFichier.Options := FxmlFichier.Options + [sxoAutoCreate] - [sxoAutoIndent];
 end;
@@ -44,14 +44,17 @@ begin
   inherited;
 end;
 
-function TEncodeXML.SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean;
+function TEncodeXML.IsEmpty: Boolean;
 begin
-  Result := FxmlFichier.Root.ItemCount > 0;
-  if Result then
-    if Encoding = TEncoding.UTF8 then
-      FxmlFichier.SaveToStream(Stream, seUTF8)
-    else
-      FxmlFichier.SaveToStream(Stream);
+  Result := FxmlFichier.Root.ItemCount = 0;
+end;
+
+procedure TEncodeXML.SaveToStream(Stream: TStream; Encoding: TEncoding);
+begin
+  if Encoding = TEncoding.UTF8 then
+    FxmlFichier.SaveToStream(Stream, seUTF8)
+  else
+    FxmlFichier.SaveToStream(Stream);
 end;
 
 procedure TEncodeXML.WriteHeaderFile;
@@ -64,18 +67,22 @@ end;
 
 procedure TEncodeXML.WriteData(Data: TData);
 var
-  i: Integer;
+  p: TPair<string, string>;
   s: string;
 begin
   inherited;
   FNode := FxmlFichier.Root.Items.Add(TConvertOptions.XMLRecordName);
-  for i := 0 to Pred(Headers.Count) do
+  for p in Data do
   begin
-    s := Data[i];
-    if Pos('<', s) + Pos('>', s) > 0 then
-      FNode.Items.ItemNamed[Headers[i]].Items.AddCData(Headers[i], Data[i])
-    else
-      FNode.Items.ItemNamed[Headers[i]].Items.AddText(Headers[i], Data[i]);
+    s := FormatValue(p.Key, p.Value);
+
+    if s <> '' then
+    begin
+      // if Pos('<', s) + Pos('>', s) > 0 then
+      // FNode.Items.ItemNamed[p.Key].Items.AddCData(p.Key, s)
+      // else
+      FNode.Items.ItemNamed[p.Key].Items.AddText(p.Key, s);
+    end;
   end;
 end;
 

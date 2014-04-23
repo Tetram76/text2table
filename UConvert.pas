@@ -21,6 +21,12 @@ type
       class procedure DT_switch(Sender: TObject; const Value: string);
       class procedure rootnodename_switch(Sender: TObject; const Value: string);
       class procedure recordnodename_switch(Sender: TObject; const Value: string);
+      class procedure emptystring_switch(Sender: TObject; const Value: string);
+      class procedure emptydate_switch(Sender: TObject; const Value: string);
+      class procedure emptytime_switch(Sender: TObject; const Value: string);
+      class procedure emptyinteger_switch(Sender: TObject; const Value: string);
+      class procedure emptynumber_switch(Sender: TObject; const Value: string);
+      class procedure emptydata_flag(Sender: TObject; const Value: string);
     end;
 
   private
@@ -37,7 +43,7 @@ type
     class var OutputUTF8: Boolean;
     class var XMLRootName: string;
     class var XMLRecordName: string;
-    class var DataTypes: TDictionary<string, string>;
+    class var DataTypes: TDictionary<string, char>;
 
     class var RegEx: string;
     class var regExFileName: TFileName;
@@ -47,6 +53,14 @@ type
 
     class property OutputFormat: TInfoEncodeFichierClass read GetOutputFormat write FOutputFormat;
     class property OutputEncoding: TEncoding read GetOuputEncoding;
+
+    class var EmptyData: Boolean;
+
+    class var EmptyString: string;
+    class var EmptyDate: string;
+    class var EmptyTime: string;
+    class var EmptyInteger: string;
+    class var EmptyNumber: string;
   end;
 
   TConvertRuntime = class
@@ -79,7 +93,7 @@ begin
 
   XMLRootName := 'data';
   XMLRecordName := 'record';
-  DataTypes := TDictionary<string, string>.Create;
+  DataTypes := TDictionary<string, char>.Create;
 end;
 
 class destructor TConvertOptions.Destroy;
@@ -135,7 +149,7 @@ var
 begin
   PrepareStreams;
   try
-    EncodeOutput := TConvertOptions.OutputFormat.Create(nil);
+    EncodeOutput := TConvertOptions.OutputFormat.Create;
     try
       EncodeOutput.SetOutputLocale(TConvertOptions.OutputLocale);
 
@@ -177,7 +191,8 @@ begin
           outputStream.WriteBuffer(Preamble, Length(Preamble));
       end;
 
-      EncodeOutput.SaveToStream(outputStream, TConvertOptions.OutputEncoding);
+      if TConvertOptions.EmptyData or not EncodeOutput.IsEmpty then
+        EncodeOutput.SaveToStream(outputStream, TConvertOptions.OutputEncoding);
     finally
       EncodeOutput.Free;
     end;
@@ -203,7 +218,37 @@ begin
   end;
   if not CharInSet(t[1], ['*', 'i', 'n', 'd', 't']) then
     raise ECommandLineError.Create('Unknown data type : ' + Value);
-  TConvertOptions.DataTypes.Add(f, t);
+  TConvertOptions.DataTypes.Add(f, t[1]);
+end;
+
+class procedure TConvertOptions.TDecodeParams.emptydata_flag(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.EmptyData := True;
+end;
+
+class procedure TConvertOptions.TDecodeParams.emptydate_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.EmptyDate := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.emptyinteger_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.EmptyInteger := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.emptynumber_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.EmptyNumber := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.emptystring_switch(Sender: TObject; const Value: string);
+begin
+  TConvertOptions.EmptyString := Value;
+end;
+
+class procedure TConvertOptions.TDecodeParams.emptytime_switch(Sender: TObject; const Value: string);
+begin
+
 end;
 
 class procedure TConvertOptions.TDecodeParams.F_switch(Sender: TObject; const Value: string);

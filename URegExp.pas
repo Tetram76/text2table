@@ -43,7 +43,10 @@ end;
 
 function TRegExp.CaptureCount: Integer;
 begin
-  Result := FRegEx.CaptureCount;
+  // après la compilation, CaptureNameCount et CaptureCount sont égaux
+  // mais après une recherche, CaptureCount = CaptureNameCount + 1
+  // Captures[0] correspond à ???
+  Result := FRegEx.CaptureNameCount;
 end;
 
 constructor TRegExp.Create;

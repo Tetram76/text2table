@@ -15,13 +15,16 @@ type
     procedure WriteString(fs: TStream; s: string);
     procedure ProcessData(fs: TStream; Data: TData);
   public
-    constructor Create(LogCallBack: TLogEvent); override;
+    constructor Create; override;
     destructor Destroy; override;
+
+    function FormatString(const Value: string): string; override;
 
     procedure WriteHeaderDataset; override;
     procedure WriteData(Data: TData); override;
 
-    function SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean; override;
+    function IsEmpty: Boolean; override;
+    procedure SaveToStream(Stream: TStream; Encoding: TEncoding); override;
 
     property NewLineStr: string read FNewLineStr write FNewLineStr;
   end;
@@ -33,10 +36,9 @@ uses
 
 { TEncodeCSV }
 
-constructor TEncodeCSV.Create(LogCallBack: TLogEvent);
+constructor TEncodeCSV.Create;
 begin
   inherited;
-  Extension := '.csv';
   FNewLineStr := sLineBreak;
   FCurrentLine := 0;
   fsData := TMemoryStream.Create;
@@ -48,48 +50,40 @@ begin
   inherited;
 end;
 
+function TEncodeCSV.FormatString(const Value: string): string;
+begin
+  Result := AdjustLineBreaks(Value);
+  Result := StringReplace(Result, sLineBreak, FNewLineStr, [rfReplaceAll]);
+end;
+
+function TEncodeCSV.IsEmpty: Boolean;
+begin
+  if TConvertOptions.AddHeaders then
+    Result := FCurrentLine = 1
+  else
+    Result := FCurrentLine = 0;
+end;
+
 procedure TEncodeCSV.ProcessData(fs: TStream; Data: TData);
 var
   i: Integer;
-  s, t: string;
+  s, h: string;
 begin
-  for i := 0 to Pred(Data.Count) do
+  for i := 0 to Pred(Headers.Count) do
   begin
+    h := Headers[i];
+
     if i > 0 then
       WriteRawString(fs, ';');
 
-    if Data[i] <> '' then
-    begin
-      TConvertOptions.DataTypes.TryGetValue(Headers[i], t);
-      if t = '' then
-        t := '*';
-
-      case t[1] of
-        'd':
-          s := FormatDateTime(OutputFormatSettings.ShortDateFormat, Trunc(StrToDate(Data[i], InputFormatSettings)), OutputFormatSettings);
-        't':
-          s := FormatDateTime(OutputFormatSettings.ShortDateFormat, Trunc(StrToDateTime(Data[i], InputFormatSettings)), OutputFormatSettings) + ' ' +
-            FormatDateTime(OutputFormatSettings.ShortTimeFormat, Frac(StrToDateTime(Data[i], InputFormatSettings)), OutputFormatSettings);
-        'n':
-          s := Format('%s', [FormatCurr('0.##', StrToCurr(Data[i], InputFormatSettings), OutputFormatSettings)]);
-        'i':
-          s := IntToStr(StrToInt(Data[i]));
-      else
-        begin
-          s := AdjustLineBreaks(Data[i]);
-          s := StringReplace(s, sLineBreak, FNewLineStr, [rfReplaceAll]);
-        end;
-      end;
-      WriteString(fs, s);
-    end;
+    Data.TryGetValue(h, s);
+    WriteString(fs, FormatValue(h, s));
   end;
 end;
 
-function TEncodeCSV.SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean;
+procedure TEncodeCSV.SaveToStream(Stream: TStream; Encoding: TEncoding);
 begin
-  Result := FCurrentLine > 0;
-  if Result then
-    fsData.SaveToStream(Stream);
+  fsData.SaveToStream(Stream);
 end;
 
 procedure TEncodeCSV.WriteHeaderDataset;

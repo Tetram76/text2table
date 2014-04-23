@@ -66,8 +66,8 @@
         <Manifest_File>None</Manifest_File>
         <VerInfo_Keys>CompanyName=;FileDescription=;FileVersion=1.0.0.0;InternalName=;LegalCopyright=;LegalTrademarks=;OriginalFilename=;ProductName=;ProductVersion=1.0.0.0;Comments=</VerInfo_Keys>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
-        <DCC_DcuOutput>.\dcu\$(Platform)\$(Config)</DCC_DcuOutput>
-        <DCC_ExeOutput>.\$(Platform)\$(Config)</DCC_ExeOutput>
+        <DCC_DcuOutput>.\dcu\$(Config)\$(Platform)</DCC_DcuOutput>
+        <DCC_ExeOutput>.\$(Config)\$(Platform)</DCC_ExeOutput>
         <DCC_E>false</DCC_E>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>
@@ -112,7 +112,7 @@
         <DCC_RemoteDebug>false</DCC_RemoteDebug>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
-        <Debugger_RunParams>-i test.txt -r (?&lt;test&gt;test)(?&lt;num&gt;\d*)</Debugger_RunParams>
+        <Debugger_RunParams>-i test.txt -r (?&lt;test&gt;test)b(?&lt;num&gt;\d*) -f json -dt num=n</Debugger_RunParams>
         <VerInfo_Locale>1033</VerInfo_Locale>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
@@ -133,6 +133,8 @@
         <DCCReference Include="UExportCommun.pas"/>
         <DCCReference Include="UExportSYLK.pas"/>
         <DCCReference Include="URegExp.pas"/>
+        <DCCReference Include="UExportJSON.pas"/>
+        <None Include="text2table.todo"/>
         <BuildConfiguration Include="Release">
             <Key>Cfg_2</Key>
             <CfgParent>Base</CfgParent>

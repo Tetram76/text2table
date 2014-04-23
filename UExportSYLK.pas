@@ -3,7 +3,7 @@ unit UExportSYLK;
 interface
 
 uses
-  SysUtils, Classes, UExportCommun, IBQuery, DB;
+  SysUtils, Classes, UExportCommun;
 
 type
   TEncodeSYLK = class(TInfoEncodeFichier)
@@ -14,15 +14,21 @@ type
     procedure WriteString(s: string);
     procedure ProcessData(Data: TData; var c: Integer);
   public
-    constructor Create(LogCallBack: TLogEvent); override;
+    constructor Create; override;
     destructor Destroy; override;
+
+    function FormatDate(const Value: string): string; override;
+    function FormatDateTime(const Value: string): string; override;
+    function FormatNumber(const Value: string): string; override;
+    function FormatString(const Value: string): string; override;
 
     procedure WriteHeaderFile; override;
     procedure WriteHeaderDataset; override;
     procedure WriteData(Data: TData); override;
     procedure WriteFooterFile; override;
 
-    function SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean; override;
+    function IsEmpty: Boolean; override;
+    procedure SaveToStream(Stream: TStream; Encoding: TEncoding); override;
   end;
 
 implementation
@@ -30,12 +36,14 @@ implementation
 uses
   UConvert;
 
-{ TEncodeSYLK }
+const
+  fmtCELL = 'C;Y%d;X%d;K%s';
 
-constructor TEncodeSYLK.Create(LogCallBack: TLogEvent);
+  { TEncodeSYLK }
+
+constructor TEncodeSYLK.Create;
 begin
   inherited;
-  Extension := '.slk';
   fs := TMemoryStream.Create;
   fsSYLK.ShortDateFormat := '';
   fsSYLK.DecimalSeparator := '.';
@@ -48,11 +56,40 @@ begin
   inherited;
 end;
 
-function TEncodeSYLK.SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean;
+function TEncodeSYLK.FormatDate(const Value: string): string;
 begin
-  Result := FCurrentLine > 0;
-  if Result then
-    fs.SaveToStream(Stream);
+  Result := Format('%d', [Trunc(StrToDate(Value, InputFormatSettings))], fsSYLK);
+end;
+
+function TEncodeSYLK.FormatDateTime(const Value: string): string;
+begin
+  Result := Format('%f', [StrToDateTime(Value, InputFormatSettings)], fsSYLK);
+end;
+
+function TEncodeSYLK.FormatNumber(const Value: string): string;
+begin
+  Result := FormatCurr('0.##', StrToCurr(Value, InputFormatSettings), fsSYLK);
+end;
+
+function TEncodeSYLK.FormatString(const Value: string): string;
+begin
+  Result := AdjustLineBreaks(Value);
+  Result := StringReplace(Result, sLineBreak, Chr(27) + ' :', [rfReplaceAll]);
+  Result := StringReplace(Result, ';', ';;', [rfReplaceAll]);
+  Result := Format('"%s"', [Result], fsSYLK);
+end;
+
+function TEncodeSYLK.IsEmpty: Boolean;
+begin
+  if TConvertOptions.AddHeaders then
+    Result := FCurrentLine = 1
+  else
+    Result := FCurrentLine = 0;
+end;
+
+procedure TEncodeSYLK.SaveToStream(Stream: TStream; Encoding: TEncoding);
+begin
+  fs.SaveToStream(Stream);
 end;
 
 procedure TEncodeSYLK.WriteFooterFile;
@@ -79,7 +116,7 @@ end;
 procedure TEncodeSYLK.WriteHeaderDataset;
 var
   c: Integer;
-  t: string;
+  t: char;
   i: Integer;
 begin
   inherited;
@@ -88,7 +125,7 @@ begin
   for i := 0 to Pred(Headers.Count) do
   begin
     if TConvertOptions.DataTypes.TryGetValue(Headers[i], t) then
-      case t[1] of
+      case t of
         'n': // ftFloat, ftCurrency:
           WriteString('F;P1;C' + IntToStr(c));
         'i': // ftInteger:
@@ -109,7 +146,7 @@ begin
     Inc(FCurrentLine);
     for i := 0 to Pred(Headers.Count) do
     begin
-      WriteString(Format('C;Y%d;X%d;K"%s"', [FCurrentLine, c, Headers[i]]));
+      WriteString(Format(fmtCELL, [FCurrentLine, c, FormatString(Headers[i])]));
       Inc(c);
     end;
   end;
@@ -136,36 +173,13 @@ end;
 procedure TEncodeSYLK.ProcessData(Data: TData; var c: Integer);
 var
   i: Integer;
-  s, t: string;
+  s, h: string;
 begin
-  for i := 0 to Pred(Data.Count) do
+  for i := 0 to Pred(Headers.Count) do
   begin
-    if Data[i] <> '' then
-    begin
-      TConvertOptions.DataTypes.TryGetValue(Headers[i], t);
-      if t = '' then
-        t := '*';
-
-      case t[1] of
-        'd':
-          s := Format('C;Y%d;X%d;K%d', [FCurrentLine, c, Trunc(StrToDate(Data[i], InputFormatSettings))], fsSYLK);
-        't':
-          s := Format('C;Y%d;X%d;K%f', [FCurrentLine, c, StrToDateTime(Data[i], InputFormatSettings)], fsSYLK);
-        'n':
-          s := Format('C;Y%d;X%d;K%s', [FCurrentLine, c, FormatCurr('0.##', StrToCurr(Data[i], InputFormatSettings), fsSYLK)]);
-        'i':
-          s := Format('C;Y%d;X%d;K%s', [FCurrentLine, c, Data[i]], fsSYLK);
-      else
-        begin
-          s := AdjustLineBreaks(Data[i]);
-          s := StringReplace(s, sLineBreak, Chr(27) + ' :', [rfReplaceAll]);
-          s := StringReplace(s, ';', ';;', [rfReplaceAll]);
-          s := Format('C;Y%d;X%d;K"%s"', [FCurrentLine, c, s], fsSYLK);
-        end;
-      end;
-      WriteString(s);
-    end;
-
+    h := Headers[i];
+    Data.TryGetValue(h, s);
+    WriteString(Format(fmtCELL, [FCurrentLine, c, FormatValue(h, s)], fsSYLK));
     Inc(c);
   end;
 end;

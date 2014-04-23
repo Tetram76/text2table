@@ -6,7 +6,7 @@ uses
   SysUtils, Classes, System.IOUtils, Generics.Collections;
 
 type
-  TData = TList<string>;
+  TData = TDictionary<string, string>;
 
   TLogEvent = procedure(const Message: string; Erreur: Boolean) of object;
   TProcessCallback = TNotifyEvent;
@@ -24,7 +24,6 @@ type
     class destructor Destroy;
 
   private
-    FExtension: string;
     FOnWriteHeaderFile: TProcessCallback;
     FOnWriteFooterFile: TProcessCallback;
     FOnWriteFooterDataset: TProcessCallback;
@@ -32,17 +31,21 @@ type
     FOnWriteData: TProcessDataCallback;
     FInputFormatSettings: TFormatSettings;
     FOutputFormatSettings: TFormatSettings;
-    FHeaders: TData;
+    FHeaders: TList<string>;
     FWriteBOM: Boolean;
     procedure SetWriteBOM(const Value: Boolean);
   protected
     FFlatBuild: Boolean;
   public
-
-    FLogCallback: TLogEvent;
-
-    constructor Create(LogCallBack: TLogEvent); virtual;
+    constructor Create; virtual;
     destructor Destroy; override;
+
+    function FormatValue(const Header, Value: string): string;
+    function FormatString(const Value: string): string; virtual;
+    function FormatDate(const Value: string): string; virtual;
+    function FormatDateTime(const Value: string): string; virtual;
+    function FormatInteger(const Value: string): string; virtual;
+    function FormatNumber(const Value: string): string; virtual;
 
     procedure WriteHeaderFile; virtual;
     procedure WriteHeaderDataset; virtual;
@@ -50,17 +53,16 @@ type
     procedure WriteFooterDataset; virtual;
     procedure WriteFooterFile; virtual;
 
-    procedure SetHeaders(List: TData); virtual;
     procedure SetOutputLocale(locale: string); virtual;
     procedure SetInputLocale(locale: string); virtual;
 
-    function SaveToStream(Stream: TStream; Encoding: TEncoding): Boolean; virtual; abstract;
+    function IsEmpty: Boolean; virtual;
+    procedure SaveToStream(Stream: TStream; Encoding: TEncoding); virtual; abstract;
 
     procedure BuildFile(const Data, RegEx: string);
 
-    property Headers: TData read FHeaders write SetHeaders;
+    property Headers: TList<string> read FHeaders;
 
-    property Extension: string read FExtension write FExtension;
     property OutputFormatSettings: TFormatSettings read FOutputFormatSettings;
     property InputFormatSettings: TFormatSettings read FInputFormatSettings;
 
@@ -118,14 +120,14 @@ begin
   sl := TData.Create;
   try
     RegExp.Prepare(TConvertOptions.RegEx);
+    Headers.Clear;
     // PCRE retourne le noms en en commençant par le "fin" de la regex
     for i := Pred(RegExp.CaptureCount) downto 0 do
     begin
       s := RegExp.CaptureNames[i];
-      if sl.IndexOf(s) = -1 then
-        sl.Add(s);
+      if Headers.IndexOf(s) = -1 then
+        Headers.Add(s);
     end;
-    SetHeaders(sl);
 
     RegExp.BeginSearch(Data);
 
@@ -138,8 +140,16 @@ begin
     while RegExp.Next do
     begin
       sl.Clear;
-      for s in Headers do
-        sl.Add(RegExp.GetCaptureByName(s));
+
+      // TODO: même si le groupe catpurant n'est pas dans la chaine analysée, il apparait quand même dans la liste des CaptureNames
+      // Il faudrait donc trouver un moyen de différencier "chaine vide" de "non trouvé"
+
+      // PCRE retourne le noms en en commençant par le "fin" de la regex
+      for i := Pred(RegExp.CaptureCount) downto 0 do
+      begin
+        s := RegExp.CaptureNames[i];
+        sl.AddOrSetValue(s, RegExp.GetCaptureByName(s));
+      end;
 
       if not headerWritten then
       begin
@@ -170,11 +180,10 @@ begin
   end;
 end;
 
-constructor TInfoEncodeFichier.Create(LogCallBack: TLogEvent);
+constructor TInfoEncodeFichier.Create;
 begin
-  FLogCallback := LogCallBack;
   FFlatBuild := True;
-  FHeaders := TData.Create;
+  FHeaders := TList<string>.Create;
 
   SetOutputLocale('');
   SetInputLocale('');
@@ -198,6 +207,76 @@ begin
   inherited;
 end;
 
+function TInfoEncodeFichier.FormatDate(const Value: string): string;
+begin
+  Result := SysUtils.FormatDateTime(OutputFormatSettings.ShortDateFormat, Trunc(StrToDate(Value, InputFormatSettings)), OutputFormatSettings);
+end;
+
+function TInfoEncodeFichier.FormatDateTime(const Value: string): string;
+begin
+  Result := SysUtils.FormatDateTime(OutputFormatSettings.ShortDateFormat, Trunc(StrToDateTime(Result, InputFormatSettings)), OutputFormatSettings) + ' ' +
+    SysUtils.FormatDateTime(OutputFormatSettings.ShortTimeFormat, Frac(StrToDateTime(Result, InputFormatSettings)), OutputFormatSettings);
+end;
+
+function TInfoEncodeFichier.FormatInteger(const Value: string): string;
+begin
+  Result := IntToStr(StrToInt(Value));
+end;
+
+function TInfoEncodeFichier.FormatNumber(const Value: string): string;
+begin
+  Result := Format('%s', [FormatCurr('0.##', StrToCurr(Value, InputFormatSettings), OutputFormatSettings)])
+end;
+
+function TInfoEncodeFichier.FormatString(const Value: string): string;
+begin
+  Result := Value;
+end;
+
+function TInfoEncodeFichier.FormatValue(const Header, Value: string): string;
+var
+  t: char;
+begin
+  TConvertOptions.DataTypes.TryGetValue(Header, t);
+  if t = '' then
+    t := '*';
+
+  Result := Value;
+
+  case t of
+    'd':
+      if Result = '' then
+        Result := TConvertOptions.EmptyDate
+      else
+        Result := FormatDate(Result);
+    't':
+      if Result = '' then
+        Result := TConvertOptions.EmptyTime
+      else
+        Result := FormatDateTime(Result);
+    'n':
+      if Result = '' then
+        Result := TConvertOptions.EmptyNumber
+      else
+        Result := FormatNumber(Result);
+    'i':
+      if Result = '' then
+        Result := TConvertOptions.EmptyInteger
+      else
+        Result := FormatInteger(Result);
+  else
+    if Result = '' then
+      Result := TConvertOptions.EmptyString
+    else
+      Result := FormatString(Result);
+  end;
+end;
+
+function TInfoEncodeFichier.IsEmpty: Boolean;
+begin
+  Result := False;
+end;
+
 class function TInfoEncodeFichier.OutputFormats: TDictionary<string, TInfoEncodeFichierClass>;
 begin
   Result := FOutputFormats;
@@ -206,12 +285,6 @@ end;
 class procedure TInfoEncodeFichier.RegisterOutputFormat(const Format: string; EncodeClass: TInfoEncodeFichierClass);
 begin
   FOutputFormats.AddOrSetValue(Format, EncodeClass);
-end;
-
-procedure TInfoEncodeFichier.SetHeaders(List: TData);
-begin
-  FHeaders.Clear;
-  FHeaders.AddRange(List.ToArray);
 end;
 
 procedure TInfoEncodeFichier.SetInputLocale(locale: string);

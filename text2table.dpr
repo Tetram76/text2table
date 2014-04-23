@@ -13,7 +13,8 @@ uses
   UExportCSV in 'UExportCSV.pas',
   UExportCommun in 'UExportCommun.pas',
   UExportSYLK in 'UExportSYLK.pas',
-  URegExp in 'URegExp.pas';
+  URegExp in 'URegExp.pas',
+  UExportJSON in 'UExportJSON.pas';
 
 // https://code.google.com/p/fbclone/source/browse/trunk/fbclone.dpr
 
@@ -55,8 +56,10 @@ begin
       for f in outputFormats do
         s := s + #13#10'  - ' + f;
       CP.RegisterSwitch('f', 'format', 'format', 'Set one of output format:' + s, True, TConvertOptions.TDecodeParams.F_switch, 'Output');
+      CP.RegisterFlag('', 'emptydata', '', 'Allow generating empty data structure if no records was found in INPUT', False,
+        TConvertOptions.TDecodeParams.emptydata_flag, 'Output');
 
-      CP.RegisterSwitch('l', 'locale', 'locale', 'Set locale for output data formatting (default use system locale)', False,
+      CP.RegisterSwitch('l', 'locale', 'locale', 'Set locale for output data formatting when relevant (default use system locale)', False,
         TConvertOptions.TDecodeParams.L_switch, 'Output format');
 
       CP.RegisterFlag('', 'utf8', '', 'Use UTF8 encoding for output formatting when applicable (default use system)', False,
@@ -70,6 +73,19 @@ begin
         TConvertOptions.TDecodeParams.rootnodename_switch, 'Output format');
       CP.RegisterSwitch('', 'recordnodename', 'name', 'Set Record node name in XML output (default "record")', False,
         TConvertOptions.TDecodeParams.recordnodename_switch, 'Output format');
+      CP.RegisterSwitch('', 'emptystring', 'string',
+        'Define string in output data to use when a string capturing group is not found in INPUT data (default none)', False,
+        TConvertOptions.TDecodeParams.emptystring_switch, 'Output format');
+      CP.RegisterSwitch('', 'emptydate', 'string', 'Define string in output data to use when a date capturing group is not found in INPUT data (default none)',
+        False, TConvertOptions.TDecodeParams.emptydate_switch, 'Output format');
+      CP.RegisterSwitch('', 'emptytime', 'string', 'Define string in output data to use when a time capturing group is not found in INPUT data (default none)',
+        False, TConvertOptions.TDecodeParams.emptytime_switch, 'Output format');
+      CP.RegisterSwitch('', 'emptyinteger', 'string',
+        'Define string in output data to use when an integer capturing group is not found in INPUT data (default none)', False,
+        TConvertOptions.TDecodeParams.emptyinteger_switch, 'Output format');
+      CP.RegisterSwitch('', 'emptynumber', 'string',
+        'Define string in output data to use when a number capturing group is not found in INPUT data (default none)', False,
+        TConvertOptions.TDecodeParams.emptynumber_switch, 'Output format');
 
       CP.Parse;
 
