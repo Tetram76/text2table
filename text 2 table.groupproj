@@ -1,0 +1,44 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{5BF664B2-CBAC-4943-ACB1-43F056FA27AE}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="text2table.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="text2table">
+        <MSBuild Projects="text2table.dproj"/>
+    </Target>
+    <Target Name="text2table:Clean">
+        <MSBuild Projects="text2table.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="text2table:Make">
+        <MSBuild Projects="text2table.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="text2table"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="text2table:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="text2table:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+    <ItemGroup Condition="'$(BuildGroup)'=='Release'">
+        <BuildGroupProject Include="text2table.dproj">
+            <ProjectGuid>{C0D74D99-4CED-4DC0-9875-9F6C1300528D}</ProjectGuid>
+            <Configurations>Release</Configurations>
+            <Platforms>Win32;Win64</Platforms>
+            <Enabled>True</Enabled>
+        </BuildGroupProject>
+    </ItemGroup>
+</Project>
