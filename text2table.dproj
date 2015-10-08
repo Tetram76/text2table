@@ -1,7 +1,7 @@
 ﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <ProjectGuid>{C0D74D99-4CED-4DC0-9875-9F6C1300528D}</ProjectGuid>
-        <ProjectVersion>15.3</ProjectVersion>
+        <ProjectVersion>16.0</ProjectVersion>
         <FrameworkType>None</FrameworkType>
         <MainSource>text2table.dpr</MainSource>
         <Base>True</Base>
@@ -46,6 +46,7 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
+        <SanitizedProjectName>text2table</SanitizedProjectName>
         <DCC_Define>PCRE_STATICLINK;PCRE_8;$(DCC_Define)</DCC_Define>
         <VerInfo_Locale>1036</VerInfo_Locale>
         <Manifest_File>None</Manifest_File>
